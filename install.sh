@@ -1,0 +1,92 @@
+#!/bin/bash
+
+apt update
+apt upgrade
+apt install wget
+apt install proftpd-basic proftpd-mod-mysql
+wget https://dev.mysql.com/get/mysql-apt-config_0.8.24-1_all.deb
+dpkg -i mysql-apt-config_0.8.24-1_all.deb 
+apt update
+apt install mysql-server
+
+mkdir /shared-dir
+chown 5500:5500 /shared-dir
+
+mysql -u root -p
+
+create database proftpd;
+create user proftpd@localhost identified by 'password';
+grant all privileges on proftpd.* to proftpd;
+
+use proftpd
+
+CREATE TABLE IF NOT EXISTS `ftpgroup` (
+  `groupname` varchar(16) COLLATE utf8_general_ci NOT NULL,
+  `gid` smallint(6) NOT NULL DEFAULT '5500',
+  `members` varchar(16) COLLATE utf8_general_ci NOT NULL,
+  KEY `groupname` (`groupname`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci COMMENT='proftpd group table';
+
+CREATE TABLE IF NOT EXISTS `ftpuser` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `userid` varchar(32) COLLATE utf8_general_ci NOT NULL DEFAULT '',
+  `passwd` varchar(32) COLLATE utf8_general_ci NOT NULL DEFAULT '',
+  `uid` smallint(6) NOT NULL DEFAULT '5500',
+  `gid` smallint(6) NOT NULL DEFAULT '5500',
+  `homedir` varchar(255) COLLATE utf8_general_ci NOT NULL DEFAULT '',
+  `shell` varchar(16) COLLATE utf8_general_ci NOT NULL DEFAULT '/sbin/nologin',
+  `count` int(11) NOT NULL DEFAULT '0',
+  `accessed` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `modified` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `userid` (`userid`)
+) ENGINE=MyISAM  DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci COMMENT='proftpd user table';
+
+/bin/echo "{md5}"`/bin/echo -n "passwd" | openssl dgst -binary -md5 | openssl enc -base64`
+
+INSERT INTO proftpd.ftpuser
+(userid, passwd, uid, gid, homedir, shell, count, accessed, modified)
+VALUES('user', '{md5}passwd', 5500, 5500, '/shared-dir', '/sbin/nologin', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+nano /etc/proftpd/proftpd.conf
+#
+# UseIPv6 on
+Umask 0022 0022
+PassivePorts 45000 48000
+Include /etc/proftpd/sql.conf
+RequireValidShell         off
+#
+
+nano /etc/proftpd/sql.conf 
+
+#
+SQLBackend        mysql
+#Passwords in MySQL are encrypted using CRYPT
+
+SQLAuthTypes            OpenSSL Crypt
+SQLAuthenticate         users groups
+# used to connect to the database
+# databasename@host database_user user_password
+
+SQLConnectInfo  proftpd@localhost proftpd Trindade2010@
+# Here we tell ProFTPd the names of the database columns in the "usertable"
+# we want it to interact with. Match the names with those in the db
+
+SQLUserInfo     ftpuser userid passwd uid gid homedir shell
+# Here we tell ProFTPd the names of the database columns in the "grouptable"
+# we want it to interact with. Again the names match with those in the db
+
+SQLGroupInfo    ftpgroup groupname gid members
+# set min UID and GID - otherwise these are 999 each
+
+SQLMinID        500
+# Update count every time user logs in
+
+SQLLog PASS updatecount
+SQLNamedQuery updatecount UPDATE "count=count+1, accessed=now() WHERE userid='%u'" ftpuser
+# Update modified everytime user uploads or deletes a file
+#
+
+/etc/init.d/proftpd stop
+/etc/init.d/proftpd start
+systemctl status proftpd
