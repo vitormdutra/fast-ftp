@@ -60,13 +60,18 @@ PassivePorts 45000  48000
 RequireValidShell off
 SystemLog /var/log/proftpd/proftpd.log
 
+nano /etc/proftpd/modules.conf
+
+enable mod_sql.c and mod_sql_mysql.c
+# to enable just remove comment 
+
 nano /etc/proftpd/sql.conf 
 
 <IfModule mod_sql.c>
 SQLBackend mysql
 SQLAuthTypes OpenSSL  Crypt
 SQLAuthenticate users  groups
-SQLConnectInfo proftpd@localhost  proftpd  Trindade2010@
+SQLConnectInfo proftpd@localhost  proftpd  proftpd_passwd
 SQLUserInfo ftpuser  userid  passwd  uid  gid  homedir  shell
 SQLGroupInfo ftpgroup  groupname  gid  members
 SQLMinID 500
